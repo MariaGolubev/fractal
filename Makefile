@@ -7,6 +7,11 @@ CFLAGS_RELEASE = `pkg-config --cflags gtk4 libadwaita-1 epoxy` -O3 -DNDEBUG
 
 LDFLAGS = `pkg-config --libs gtk4 libadwaita-1 epoxy`
 
+INCLUDE = include
+HEADERSFILE = vertex_shader.h fragment_shader.h
+
+HEADERS = $(HEADERSFILE:%=$(INCLUDE)/%)
+
 SRCDIR = src
 OBJDIR = obj
 
@@ -24,14 +29,23 @@ debug: $(NAME)
 $(NAME): $(OBJS)
 	$(CC) -o $@ $^ $(LDFLAGS)
 
-$(OBJDIR)/%.o: $(SRCDIR)/%.c | $(OBJDIR)
-	$(CC) -c $< -o $@ $(CFLAGS)
+$(OBJDIR)/%.o: $(SRCDIR)/%.c $(HEADERS) | $(OBJDIR)
+	$(CC) -I$(INCLUDE) -c $< -o $@ $(CFLAGS)
 
 $(OBJDIR):
 	mkdir -p $(OBJDIR)
 
+$(INCLUDE)/vertex_shader.h: $(SRCDIR)/vertex_shader.glsl | $(INCLUDE)
+	xxd -i $< > $@
+
+$(INCLUDE)/fragment_shader.h: $(SRCDIR)/fragment_shader.glsl | $(INCLUDE)
+	xxd -i $< > $@
+
+$(INCLUDE):
+	mkdir -p $(INCLUDE)
+
 clean:
-	rm -rf $(OBJDIR)
+	rm -rf $(OBJDIR) $(INCLUDE)
 
 fclean: clean
 	rm -f $(NAME)

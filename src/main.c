@@ -6,7 +6,7 @@
 /*   By: mgolubev <mgolubev@student.codam.nl>         +#+                     */
 /*                                                   +#+                      */
 /*   Created: 2024/10/24 20:33:50 by mgolubev      #+#    #+#                 */
-/*   Updated: 2024/12/25 12:36:31 by maria         ########   odam.nl         */
+/*   Updated: 2024/12/25 13:26:54 by maria         ########   odam.nl         */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -14,9 +14,12 @@
 #include <adwaita.h>
 #include <epoxy/gl.h>
 
+#include "fragment_shader.h"
+#include "vertex_shader.h"
+
 #define CSS ".meoww {border: 3px solid @accent_color; border-radius: 10px;}"
 
-GdkRGBA *f_get_accent_color()
+static GdkRGBA *f_get_accent_color()
 {
 	AdwStyleManager *style_manager;
 
@@ -37,19 +40,6 @@ static GtkWidget *f_new_header_bar(void)
 	return header_bar;
 }
 
-void f_set_css_provider(const char *css)
-{
-	GtkCssProvider *css_provider;
-	GdkDisplay *display;
-
-	css_provider = gtk_css_provider_new();
-	display = gdk_display_get_default();
-	gtk_css_provider_load_from_string(css_provider, css);
-	gtk_style_context_add_provider_for_display(display,
-		GTK_STYLE_PROVIDER(css_provider),
-		GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
-}
-
 static void on_accent_color_changed(GObject *object, GParamSpec *pspec, gpointer user_data)
 {
 	(void)object; (void)pspec;
@@ -58,80 +48,21 @@ static void on_accent_color_changed(GObject *object, GParamSpec *pspec, gpointer
 
 static void on_gl_area_realize(GtkGLArea *gl_area, gpointer user_data)
 {
+	const char	*vertex_shader_source = (const char *)src_vertex_shader_glsl;
+	const char	*fragment_shader_source = (const char *)src_fragment_shader_glsl;
+	GLuint		shader_program;
+	GLuint		vertex_shader;
+	GLuint		fragment_shader;
+
 	(void)user_data;
 	gtk_gl_area_make_current(gl_area);
 	if (gtk_gl_area_get_error(gl_area) != NULL) {
 		g_error("Failed to create OpenGL context");
 	}
 	glEnable(GL_MULTISAMPLE);
-	GLuint shader_program;
-	const char *vertex_shader_source = "\n"
-		"#version 450 core\n"
-		"out vec2 normCoord;\n"
-		"out vec2 fragCoord;\n"
-		"uniform vec2 resolution;\n"
-		"void main() {\n"
-		"    vec4 positions[] = {\n"
-		"        vec4(-1.0, -1.0, 0.0, 1.0),\n"
-		"        vec4( 3.0, -1.0, 0.0, 1.0),\n"
-		"        vec4(-1.0,  3.0, 0.0, 1.0)\n"
-		"    };\n"
-		"    normCoord = vec2(\n"
-		"        positions[gl_VertexID].x * resolution.x / resolution.y,\n"
-		"        positions[gl_VertexID].y) * vec2(1.3, 1.3);\n"
-		"    fragCoord = (positions[gl_VertexID].xy + 1.0) * 0.5 * resolution;\n"
-		"    gl_Position = positions[gl_VertexID];\n"
-		"}\n";
-
-	const char *fragment_shader_source = "\n"
-		"#version 450 core\n"
-		"out vec4 fragColor;\n"
-		"in vec2 normCoord;\n"
-		"in vec2 fragCoord;\n"
-		"uniform vec4 accent_color;\n"
-		"float rand(vec2 co) {\n"
-		"    return fract(sin(dot(co.xy, vec2(12.9898, 78.233))) * 43758.5453);\n"
-		"}\n"
-		"void main() {\n"
-		"    // Нормализуем координаты пикселя в диапазон (-2, 2)\n"
-		"    vec2 c = vec2(0.285, 0.01); // Параметр c для фрактала Жюлья\n"
-		"    vec2 z = normCoord;\n"
-		"    int max_iter = 500;\n"
-		"    int iter = 0;\n"
-		"    // Итерации для вычисления фрактала\n"
-		"    while (length(z) < 4.0 && iter < max_iter) {\n"
-		"        float xtmp = z.x * z.x - z.y * z.y;\n"
-		"        z = vec2(z.x * z.x - z.y * z.y, 2.0 * z.x * z.y) + c;\n"
-		"        iter++;\n"
-		"    }\n"
-		"    float map[8][8] = {\n"
-		"        {0.0, 0.5, 0.125, 0.625, 0.03125, 0.53125, 0.15625, 0.65625},\n"
-		"        {0.75, 0.25, 0.875, 0.375, 0.78125, 0.28125, 0.90625, 0.40625},\n"
-		"        {0.1875, 0.6875, 0.0625, 0.5625, 0.21875, 0.71875, 0.09375, 0.59375},\n"
-		"        {0.9375, 0.4375, 0.8125, 0.3125, 0.96875, 0.46875, 0.84375, 0.34375},\n"
-		"        {0.046875, 0.546875, 0.171875, 0.671875, 0.015625, 0.515625, 0.140625, 0.640625},\n"
-		"        {0.796875, 0.296875, 0.921875, 0.421875, 0.765625, 0.265625, 0.890625, 0.390625},\n"
-		"        {0.234375, 0.734375, 0.109375, 0.609375, 0.203125, 0.703125, 0.078125, 0.578125},\n"
-		"        {0.984375, 0.484375, 0.859375, 0.359375, 0.953125, 0.453125, 0.828125, 0.328125}\n"
-		"    };\n"
-		"    // Логарифмическое вычисление интенсивности цвета\n"
-		"    float color = 1.0;\n"
-		"    if (iter != max_iter) {\n"
-		"        float iter = iter + 1 - log(log(length(z))) / log(2);\n"
-		"        color = log(float(iter)) / log(float(max_iter));\n"
-		"        int x = int(mod(fragCoord.x, 8.0));\n"
-		"        int y = int(mod(fragCoord.y, 8.0));\n"
-		"        color += map[y][x] * 0.05;\n"
-		"    }\n"
-		"    // Устанавливаем цвет пикселя\n"
-		"    fragColor = mix(vec4(0.0f, 0.0f, 0.0f, 1.0f), accent_color, color);\n"
-		"}\n";
-
-	GLuint vertex_shader;
-	GLuint fragment_shader;
 
 	vertex_shader = glCreateShader(GL_VERTEX_SHADER);
-	glShaderSource(vertex_shader, 1, &vertex_shader_source, NULL);
+	glShaderSource(vertex_shader, 1, &vertex_shader_source, (GLint *)(&src_vertex_shader_glsl_len));
 	glCompileShader(vertex_shader);
 
 	GLint success;
@@ -143,7 +74,7 @@ static void on_gl_area_realize(GtkGLArea *gl_area, gpointer user_data)
 	}
 
 	fragment_shader = glCreateShader(GL_FRAGMENT_SHADER);
-	glShaderSource(fragment_shader, 1, &fragment_shader_source, NULL);
+	glShaderSource(fragment_shader, 1, &fragment_shader_source, (GLint *)&src_fragment_shader_glsl_len);
 	glCompileShader(fragment_shader);
 
 	glGetShaderiv(fragment_shader, GL_COMPILE_STATUS, &success);
@@ -218,18 +149,18 @@ static gboolean on_gl_area_render(GtkGLArea *gl_area, GdkGLContext *context, gpo
 	return TRUE;
 }
 
-GtkWidget *f_new_gl_area(void)
+static GtkWidget *f_new_gl_area(void)
 {
-	GtkWidget *gl_area;
+	GtkWidget		*gl_area;
+	AdwStyleManager	*style_manager;
 
 	gl_area = gtk_gl_area_new();
 	gtk_gl_area_set_required_version(GTK_GL_AREA(gl_area), 4, 5);
 	g_signal_connect(gl_area, "realize", G_CALLBACK(on_gl_area_realize), NULL);
 	g_signal_connect(gl_area, "render", G_CALLBACK(on_gl_area_render), NULL);
-
-	AdwStyleManager *style_manager = adw_style_manager_get_default();
-	g_signal_connect(style_manager, "notify::accent-color-rgba", G_CALLBACK(on_accent_color_changed), gl_area);
-
+	style_manager = adw_style_manager_get_default();
+	g_signal_connect(style_manager, "notify::accent-color-rgba",
+			G_CALLBACK(on_accent_color_changed), gl_area);
 	return (gl_area);
 }
 
@@ -243,7 +174,6 @@ static void on_activate(GtkApplication *app, gpointer ptr)
 	window = ADW_APPLICATION_WINDOW(adw_application_window_new(app));
 	gtk_overlay_add_overlay(GTK_OVERLAY(overlay), f_new_header_bar());
 	gtk_overlay_set_child(GTK_OVERLAY(overlay), f_new_gl_area());
-	// gtk_widget_add_css_class(GTK_WIDGET(window), "meoww");
 	gtk_window_set_title(GTK_WINDOW(window), "Hello Codam!");
 	gtk_window_set_default_size(GTK_WINDOW(window), 1080, 920);
 	adw_application_window_set_content(window, overlay);
@@ -256,7 +186,6 @@ int main(int argc, char *argv[])
 	int status;
 
 	adw_init();
-	// f_set_css_provider(CSS);
 	app = adw_application_new("org.gtk.example", G_APPLICATION_DEFAULT_FLAGS);
 	g_signal_connect(app, "activate", G_CALLBACK(on_activate), NULL);
 	status = g_application_run(G_APPLICATION(app), argc, argv);
