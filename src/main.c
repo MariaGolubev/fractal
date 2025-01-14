@@ -6,18 +6,42 @@
 /*   By: mgolubev <mgolubev@student.codam.nl>         +#+                     */
 /*                                                   +#+                      */
 /*   Created: 2024/10/24 20:33:50 by mgolubev      #+#    #+#                 */
-/*   Updated: 2024/12/25 13:26:54 by maria         ########   odam.nl         */
+/*   Updated: 2025/01/14 18:10:26 by maria         ########   odam.nl         */
 /*                                                                            */
 /* ************************************************************************** */
 
 #include <gtk/gtk.h>
 #include <adwaita.h>
+#include <gtk4-layer-shell.h>
 #include <epoxy/gl.h>
+#include <sys/time.h>
 
 #include "fragment_shader.h"
 #include "vertex_shader.h"
 
 #define CSS ".meoww {border: 3px solid @accent_color; border-radius: 10px;}"
+
+#ifndef M_PI
+# define M_PI 3.14159265358979323846
+#endif
+
+gboolean	g_is_wallpaper = FALSE;
+
+float g_points[][2] = {
+		{0.4, -0.006},
+		{0.4, 0.006},
+		{0.285, 0.006},
+		{0.285, -0.006},
+		{0.285, 0.006}
+	};
+float g_cycle_duration = 50000.0f;
+int g_num_points = sizeof(g_points) / sizeof(g_points[0]);
+
+static void mix_complex(float a[], float b[], float t, float result[])
+{
+	result[0] = a[0] + t * (b[0] - a[0]);
+	result[1] = a[1] + t * (b[1] - a[1]);
+}
 
 static GdkRGBA *f_get_accent_color()
 {
@@ -136,6 +160,19 @@ static gboolean on_gl_area_render(GtkGLArea *gl_area, GdkGLContext *context, gpo
 		accent_color->blue, accent_color->alpha);
 	g_free(accent_color);
 
+	GLint complex_loc = glGetUniformLocation(shader_program, "complex");
+
+	struct timeval tv;
+	gettimeofday(&tv, NULL);
+	uint64_t milliseconds = tv.tv_sec * 1000 + tv.tv_usec / 1000;
+	float time_in_cycle = (float)(milliseconds % (uint64_t)g_cycle_duration);
+	float t = time_in_cycle / g_cycle_duration;
+	t =  (1 - cos(M_PI * t)) / 2;
+	float result[2];
+	int current_point = (milliseconds / (int)g_cycle_duration ) % g_num_points;
+	mix_complex(g_points[current_point], g_points[(current_point + 1) % g_num_points], t, result);
+	glUniform2f(complex_loc, result[0], result[1]);
+
 	glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
 	glClear(GL_COLOR_BUFFER_BIT);
 
@@ -147,6 +184,16 @@ static gboolean on_gl_area_render(GtkGLArea *gl_area, GdkGLContext *context, gpo
 	glUseProgram(0);
 
 	return TRUE;
+}
+
+static gboolean on_timeout(gpointer data) {
+	GtkWidget *widget = GTK_WIDGET(data);
+	if (GTK_IS_WIDGET(widget))
+	{
+		gtk_widget_queue_draw(widget);
+		return (1);
+	}
+	return (0);
 }
 
 static GtkWidget *f_new_gl_area(void)
@@ -161,15 +208,15 @@ static GtkWidget *f_new_gl_area(void)
 	style_manager = adw_style_manager_get_default();
 	g_signal_connect(style_manager, "notify::accent-color-rgba",
 			G_CALLBACK(on_accent_color_changed), gl_area);
+	g_timeout_add(40, (GSourceFunc)on_timeout, gl_area);
 	return (gl_area);
 }
 
-static void on_activate(GtkApplication *app, gpointer ptr)
+static void window(GtkApplication *app)
 {
 	AdwApplicationWindow *window;
 	GtkWidget *overlay;
 
-	(void)ptr;
 	overlay = gtk_overlay_new();
 	window = ADW_APPLICATION_WINDOW(adw_application_window_new(app));
 	gtk_overlay_add_overlay(GTK_OVERLAY(overlay), f_new_header_bar());
@@ -180,6 +227,44 @@ static void on_activate(GtkApplication *app, gpointer ptr)
 	gtk_window_present(GTK_WINDOW(window));
 }
 
+static void wallpaper(GtkApplication *app)
+{
+	AdwApplicationWindow *window;
+
+	window = ADW_APPLICATION_WINDOW(adw_application_window_new(app));
+
+	gtk_layer_init_for_window(GTK_WINDOW(window));
+	gtk_layer_set_layer(GTK_WINDOW(window), GTK_LAYER_SHELL_LAYER_BACKGROUND);
+	gtk_layer_auto_exclusive_zone_enable(GTK_WINDOW(window));
+	gtk_layer_set_anchor(GTK_WINDOW(window), GTK_LAYER_SHELL_EDGE_LEFT, TRUE);
+	gtk_layer_set_anchor(GTK_WINDOW(window), GTK_LAYER_SHELL_EDGE_RIGHT, TRUE);
+	gtk_layer_set_anchor(GTK_WINDOW(window), GTK_LAYER_SHELL_EDGE_TOP, TRUE);
+	gtk_layer_set_anchor(GTK_WINDOW(window), GTK_LAYER_SHELL_EDGE_BOTTOM, TRUE);
+
+
+	gtk_window_set_title(GTK_WINDOW(window), "Hello Codam!");
+	adw_application_window_set_content(window, f_new_gl_area());
+	gtk_window_present(GTK_WINDOW(window));
+}
+
+static void on_activate(GtkApplication *app, gpointer user_data)
+{
+	(void)user_data;
+
+	if (g_is_wallpaper)
+		wallpaper(app);
+	else
+		window(app);
+}
+
+static gint	on_handle_local_options(GApplication *app, GVariantDict *options, gpointer user_data) {
+	(void)app;
+	(void)user_data;
+	if (g_variant_dict_lookup(options, "wallpaper", "b", NULL))
+		g_is_wallpaper = TRUE;
+	return (-1);
+}
+
 int main(int argc, char *argv[])
 {
 	AdwApplication *app;
@@ -187,6 +272,8 @@ int main(int argc, char *argv[])
 
 	adw_init();
 	app = adw_application_new("org.gtk.example", G_APPLICATION_DEFAULT_FLAGS);
+	g_application_add_main_option(G_APPLICATION(app), "wallpaper", 0, G_OPTION_FLAG_NONE, G_OPTION_ARG_NONE, "Set wallpaper mode", NULL);
+	g_signal_connect(app, "handle-local-options", G_CALLBACK(on_handle_local_options), NULL);
 	g_signal_connect(app, "activate", G_CALLBACK(on_activate), NULL);
 	status = g_application_run(G_APPLICATION(app), argc, argv);
 	g_object_unref(app);

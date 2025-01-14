@@ -3,14 +3,14 @@ out vec4 fragColor;
 in vec2 normCoord;
 in vec2 fragCoord;
 uniform vec4 accent_color;
+uniform vec2 complex;
 void main() {
-	vec2 c = vec2(0.285, 0.01);
 	vec2 z = normCoord;
 	int max_iter = 500;
 	int iter = 0;
 	while (length(z) < 4.0 && iter < max_iter) {
 		float xtmp = z.x * z.x - z.y * z.y;
-		z = vec2(z.x * z.x - z.y * z.y, 2.0 * z.x * z.y) + c;
+		z = vec2(z.x * z.x - z.y * z.y, 2.0 * z.x * z.y) + complex;
 		iter++;
 	}
 	float map[8][8] = {

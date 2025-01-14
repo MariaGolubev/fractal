@@ -2,10 +2,10 @@ NAME = fractal
 
 CC = gcc
 
-CFLAGS_DEBUG = `pkg-config --cflags gtk4 libadwaita-1 epoxy` -Wall -Wextra -Werror -O0 -g
-CFLAGS_RELEASE = `pkg-config --cflags gtk4 libadwaita-1 epoxy` -O3 -DNDEBUG
+CFLAGS_DEBUG = `pkg-config --cflags gtk4 libadwaita-1 epoxy  gtk4-layer-shell-0` -Wall -Wextra -Werror -O0 -g
+CFLAGS_RELEASE = `pkg-config --cflags gtk4 libadwaita-1 epoxy  gtk4-layer-shell-0` -O3 -DNDEBUG
 
-LDFLAGS = `pkg-config --libs gtk4 libadwaita-1 epoxy`
+LDFLAGS = `pkg-config --libs gtk4 libadwaita-1 epoxy  gtk4-layer-shell-0` -lm
 
 INCLUDE = include
 HEADERSFILE = vertex_shader.h fragment_shader.h
